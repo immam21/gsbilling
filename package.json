@@ -1,0 +1,7 @@
+{
+  "name": "sheetbill-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Marketing website and enquiry form for SheetBill",
+  "engines": { "node": ">=18" }
+}
