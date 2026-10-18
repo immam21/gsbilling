@@ -51,3 +51,4 @@ Add real screenshots, customer quotes and your photo when you have them: they se
 - The site shows sample screens with sample data and says so. Keep it that way: only show real shop names or photos with permission.
 - Keep the footer line that says the product is not affiliated with Google or WhatsApp.
 - Have the privacy notice reviewed, since you collect phone numbers.
+- Immamdeen
