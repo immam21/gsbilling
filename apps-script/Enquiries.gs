@@ -31,6 +31,11 @@ function setup() {
   for (var i = 0; i < w.length; i++) sh.setColumnWidth(i + 1, w[i]);
 }
 
+// Opening the Web app URL in a browser shows this line, which proves the deployment is live.
+function doGet() {
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, message: 'Enquiry collector is running' })).setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   var out;
   try {
