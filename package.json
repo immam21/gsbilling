@@ -1,7 +1,7 @@
 {
-  "name": "sheetbill-website",
+  "name": "gsheetpos-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Marketing website and enquiry form for SheetBill",
+  "description": "Marketing website and enquiry form for GSheetPOS",
   "engines": { "node": ">=18" }
 }
