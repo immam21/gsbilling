@@ -749,26 +749,81 @@ var CONFIG = {
       a.href = waUrl('Hi, I filled the GSheetPOS enquiry.\nName: ' + d.name + '\nShop: ' + d.business + '\nCity: ' + d.city + '\nPhone: ' + d.phone + '\nType: ' + d.type); }
     $('#formBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  form.addEventListener('submit', function (e) {
+form.addEventListener('submit', function (e) {
     e.preventDefault();
-    var box = $('#alertBox'); box.className = 'alert'; box.textContent = '';
-    if (!validate()) { var first = $('.f.err', form); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-    var d = collect(), btn = $('#send');
-    btn.disabled = true; btn.classList.add('busy'); $('#sendTxt').textContent = 'Sending…';
-    fetch('/api/enquiry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false }; }).then(function (j) { return { status: r.status, j: j }; }); })
-      .then(function (res) {
-        if (res.j && res.j.ok) { showDone(d, true); return; }
-        throw new Error((res.j && res.j.error) || 'Could not send');
-      })
-      .catch(function (err) {
-        btn.disabled = false; btn.classList.remove('busy'); $('#sendTxt').textContent = 'Send enquiry';
+
+    var box = $('#alertBox');
+    box.className = 'alert';
+    box.textContent = '';
+
+    // Keep existing form validation
+    if (!validate()) {
+        var first = $('.f.err', form);
+        if (first) {
+            first.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }
+        return;
+    }
+
+    var d = collect();
+    var btn = $('#send');
+
+    // Disable button while preparing WhatsApp
+    btn.disabled = true;
+    btn.classList.add('busy');
+    $('#sendTxt').textContent = 'Opening WhatsApp…';
+
+    try {
+        // Build enquiry message
+        var message =
+            '*New GSheetPOS Enquiry*\n\n' +
+            '*Name:* ' + (d.name || '') + '\n' +
+            '*Business:* ' + (d.business || '') + '\n' +
+            '*Phone:* ' + (d.phone || '') + '\n' +
+            '*Email:* ' + (d.email || 'Not provided') + '\n' +
+            '*City:* ' + (d.city || '') + '\n' +
+            '*Business Type:* ' + (d.type || '') + '\n' +
+            '*GSTIN:* ' + (d.gstin || 'Not provided') + '\n' +
+            '*Products:* ' + (d.products || 'Not provided') + '\n' +
+            '*Daily Bills:* ' + (d.bills || 'Not provided') + '\n' +
+            '*Current Software:* ' + (d.software || 'Not provided') + '\n' +
+            '*Scanner:* ' + (d.scanner || 'Not provided') + '\n' +
+            '*Requirements:* ' + (d.needs || 'Not provided') + '\n' +
+            '*Language:* ' + (d.lang || 'Not provided') + '\n' +
+            '*Preferred Contact Time:* ' + (d.ctime || 'Not provided') + '\n' +
+            '*Message:* ' + (d.message || 'Not provided');
+
+        // IMPORTANT: Replace with your business WhatsApp number.
+        // Include country code; do not include + or spaces.
+        var businessWhatsApp = '919688772477';
+
+        var whatsappUrl =
+            'https://wa.me/' +
+            businessWhatsApp +
+            '?text=' +
+            encodeURIComponent(message);
+
+        // Open WhatsApp directly; no API or Google Sheets call.
+        window.location.href = whatsappUrl;
+
+        // Restore button if the customer returns to the page
+        btn.disabled = false;
+        btn.classList.remove('busy');
+        $('#sendTxt').textContent = 'Send enquiry';
+
+    } catch (err) {
+        btn.disabled = false;
+        btn.classList.remove('busy');
+        $('#sendTxt').textContent = 'Send enquiry';
+
         box.className = 'alert bad';
-        box.textContent = (err && err.message ? err.message : 'Something went wrong') + (waOk ? '. You can also send these details on WhatsApp:' : '. Please try again in a moment.');
-        if (waOk) { var b = document.createElement('a'); b.className = 'btn wa'; b.style.marginTop = '12px'; b.textContent = '💬 Send on WhatsApp'; b.target = '_blank'; b.rel = 'noopener';
-          b.href = waUrl('Hi, I want to enquire about GSheetPOS.\nName: ' + d.name + '\nShop: ' + d.business + '\nCity: ' + d.city + '\nPhone: ' + d.phone + '\nType: ' + d.type); box.appendChild(document.createElement('br')); box.appendChild(b); }
-      });
-  });
+        box.textContent =
+            'Could not open WhatsApp. Please try again.';
+    }
+});
 })();
 </script>
 </body>
