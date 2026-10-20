@@ -1,17 +1,14 @@
-// Vercel Serverless Function: WhatsApp-only Enquiry Handler
-// Google Sheets / Apps Script submission has been removed.
+// Vercel Serverless Function: enquiry handler
+// Supports:
+// - popup lead capture from visitors
+// - full onboarding form submissions
+// - optional forwarding to Google Apps Script for Sheet storage
 //
 // SETUP:
 // 1. Save this file as api/enquiry.js
 // 2. Replace WHATSAPP_NUMBER with your business WhatsApp number.
-// 3. Deploy to Vercel.
-//
-// FLOW:
-// Website form -> Vercel API -> WhatsApp link
-// The customer must press Send inside WhatsApp.
-//
-// NOTE:
-// This API does not automatically send WhatsApp messages.
+// 3. Set APPS_SCRIPT_URL and ENQUIRY_TOKEN if you want popup + form data saved in Google Sheets.
+// 4. Deploy to Vercel.
 
 const FIELDS = [
   'name',
@@ -37,8 +34,8 @@ const MAX = {
   needs: 200
 };
 
-// Replace with your business WhatsApp number.
-// India example: 919876543210
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || '';
+const ENQUIRY_TOKEN = process.env.ENQUIRY_TOKEN || '';
 const WHATSAPP_NUMBER = '919688772477';
 
 function clean(v, max) {
@@ -49,105 +46,133 @@ function clean(v, max) {
     .slice(0, max || 120);
 }
 
+function normalizePhone(value) {
+  let d = String(value || '').replace(/\D/g, '');
+  if (d.length === 12 && d.indexOf('91') === 0) d = d.slice(2);
+  if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+  return d;
+}
+
+async function saveToGoogleSheet(data) {
+  if (!APPS_SCRIPT_URL || !ENQUIRY_TOKEN) {
+    return { ok: false, reason: 'not-configured' };
+  }
+
+  const payload = {
+    token: ENQUIRY_TOKEN,
+    name: clean(data.name, 120),
+    business: clean(data.business || 'Popup lead', 120),
+    phone: normalizePhone(data.phone),
+    email: clean(data.email || '', 120),
+    city: clean(data.city || 'Not provided', 120),
+    type: clean(data.type || 'Popup lead', 120),
+    gstin: clean(data.gstin || '', 30),
+    products: clean(data.products || '', 120),
+    bills: clean(data.bills || '', 120),
+    software: clean(data.software || '', 200),
+    scanner: clean(data.scanner || 'Not provided', 120),
+    needs: clean(data.needs || '', 200),
+    lang: clean(data.lang || 'Not provided', 80),
+    ctime: clean(data.ctime || 'Not provided', 80),
+    message: clean(data.message || '', 1500),
+    website: clean(data.website || '', 120)
+  };
+
+  const response = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+  let parsed = {};
+  try { parsed = JSON.parse(text); } catch (e) { parsed = { ok: false, raw: text }; }
+  return { ok: !!parsed.ok, ...parsed };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
-  // Health check
   if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,
-      enquiry_method: 'WhatsApp only',
-      whatsapp_configured:
-        /^\d{10,15}$/.test(WHATSAPP_NUMBER) &&
-        WHATSAPP_NUMBER !== '919876543210'
+      enquiry_method: 'Google Sheet + WhatsApp',
+      google_sheet_configured: !!(APPS_SCRIPT_URL && ENQUIRY_TOKEN),
+      whatsapp_configured: /^\d{10,15}$/.test(WHATSAPP_NUMBER) && WHATSAPP_NUMBER !== '919876543210'
     });
   }
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
-
-    return res.status(405).json({
-      ok: false,
-      error: 'Method not allowed'
-    });
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
   try {
-    const body =
-      typeof req.body === 'string'
-        ? safeJson(req.body)
-        : req.body || {};
+    const body = typeof req.body === 'string' ? safeJson(req.body) : req.body || {};
 
-    // Spam protection: hidden honeypot field
     if (body.website) {
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, ignored: true });
     }
 
-    // Spam protection: minimum form completion time of 3 seconds
-    if (Number(body.t) < 3000) {
-      return res.status(200).json({ ok: true });
+    if (Number(body.t) < 2500 && body.source !== 'popup') {
+      return res.status(200).json({ ok: true, ignored: true });
     }
 
-    // Clean submitted fields
     const d = {};
-
     FIELDS.forEach((key) => {
       d[key] = clean(body[key], MAX[key]);
     });
 
-    // Normalize phone number
-    d.phone = d.phone.replace(/\D/g, '');
+    d.name = clean(body.name, 120);
+    d.phone = normalizePhone(body.phone || d.phone);
 
-    if (d.phone.length === 12 && d.phone.startsWith('91')) {
-      d.phone = d.phone.slice(2);
-    }
+    if (body.source === 'popup') {
+      if (!d.name || !d.phone || !/^[6-9]\d{9}$/.test(d.phone)) {
+        return res.status(400).json({ ok: false, error: 'Please enter your valid name and WhatsApp number.' });
+      }
 
-    if (d.phone.length === 11 && d.phone.startsWith('0')) {
-      d.phone = d.phone.slice(1);
-    }
-
-    // Required field validation
-    if (
-      d.name.length < 2 ||
-      d.business.length < 2 ||
-      d.city.length < 2 ||
-      !d.type
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Please fill all required fields.'
+      const sheetResult = await saveToGoogleSheet({
+        name: d.name,
+        phone: d.phone,
+        business: 'Popup lead',
+        city: 'Not provided',
+        type: 'Popup lead',
+        email: '',
+        gstin: '',
+        products: '',
+        bills: '',
+        software: '',
+        scanner: 'Not provided',
+        needs: '',
+        lang: 'Not provided',
+        ctime: 'Not provided',
+        message: 'Captured via website popup lead form.'
       });
+
+      if (sheetResult.ok) {
+        return res.status(200).json({ ok: true, saved: true, message: 'Lead saved to Google Sheet.' });
+      }
+
+      return res.status(200).json({ ok: true, saved: false, message: 'Lead received locally. Configure Google Sheets to save it automatically.' });
+    }
+
+    d.phone = normalizePhone(d.phone);
+    if (d.name.length < 2 || d.business.length < 2 || d.city.length < 2 || !d.type) {
+      return res.status(400).json({ ok: false, error: 'Please fill all required fields.' });
     }
 
     if (!/^[6-9]\d{9}$/.test(d.phone)) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Please enter a valid 10-digit mobile number.'
-      });
+      return res.status(400).json({ ok: false, error: 'Please enter a valid 10-digit mobile number.' });
     }
 
-    if (
-      d.email &&
-      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Please enter a valid email address.'
-      });
+    if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) {
+      return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
     }
 
-    // Ensure the business WhatsApp number is configured
-    if (
-      !/^\d{10,15}$/.test(WHATSAPP_NUMBER) ||
-      WHATSAPP_NUMBER === '919876543210'
-    ) {
-      return res.status(500).json({
-        ok: false,
-        error: 'Please configure the business WhatsApp number.'
-      });
+    if (!/^\d{10,15}$/.test(WHATSAPP_NUMBER) || WHATSAPP_NUMBER === '919876543210') {
+      return res.status(500).json({ ok: false, error: 'Please configure the business WhatsApp number.' });
     }
 
-    // Build the enquiry message
     const lines = [
       '*New Software Enquiry*',
       '',
@@ -168,37 +193,23 @@ module.exports = async function handler(req, res) {
       '*Message:* ' + (d.message || 'Not provided')
     ];
 
-    const message = lines.join('\n');
+    const whatsappUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(lines.join('\n'));
 
-    const whatsappUrl =
-      'https://wa.me/' +
-      WHATSAPP_NUMBER +
-      '?text=' +
-      encodeURIComponent(message);
+    await saveToGoogleSheet(d).catch(() => {});
 
-    // No Apps Script request. No Google Sheets write.
     return res.status(200).json({
       ok: true,
       method: 'whatsapp',
-      whatsappUrl: whatsappUrl,
+      whatsappUrl,
       message: 'WhatsApp enquiry link generated.'
     });
-
   } catch (e) {
-    console.error('WhatsApp enquiry error:', e.message);
-
-    return res.status(500).json({
-      ok: false,
-      error: 'Something went wrong. Please try again.'
-    });
+    console.error('Enquiry error:', e && e.message ? e.message : e);
+    return res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
   }
 };
 
 function safeJson(s) {
-  try {
-    return JSON.parse(s);
-  } catch (e) {
-    return {};
-  }
+  try { return JSON.parse(s); } catch (e) { return {}; }
 }
 

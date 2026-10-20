@@ -50,6 +50,23 @@ p{margin:0}
 .btn.lg{padding:17px 32px;font-size:17px}
 .btn[disabled]{opacity:.6;cursor:wait;transform:none}
 
+.lead-modal{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:90;opacity:0;visibility:hidden;transition:opacity .2s ease,visibility .2s ease}
+.lead-modal.show{opacity:1;visibility:visible}
+.lead-modal-card{width:min(420px,100%);background:#fff;border-radius:22px;padding:22px 22px 18px;box-shadow:0 26px 70px rgba(15,23,42,.25);border:1px solid rgba(148,163,184,.28);position:relative}
+.lead-modal-close{position:absolute;top:12px;right:12px;border:0;background:#f1f5f9;color:#0f172a;width:32px;height:32px;border-radius:50%;font-size:22px;cursor:pointer}
+.lead-modal h3{font-size:28px;margin-bottom:8px}
+.lead-modal p{color:#475569;margin-bottom:18px}
+.lead-modal .field{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.lead-modal label{font-size:14px;font-weight:700;color:#334155}
+.lead-modal input{border:1px solid #cbd5e1;border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;outline:none}
+.lead-modal input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.lead-modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+.lead-modal .secondary{border:1px solid #cbd5e1;background:#fff;color:#0f172a}
+.lead-modal .success{margin-top:14px;padding:12px 14px;border-radius:12px;background:#ecfdf5;color:#166534;font-weight:600;display:none}
+.lead-modal .success.show{display:block}
+.lead-modal .error{margin-top:10px;padding:10px 12px;border-radius:10px;background:#fef2f2;color:#991b1b;font-weight:600;display:none}
+.lead-modal .error.show{display:block}
+
 /* nav */
 .nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:.25s}
 .nav .in{display:flex;align-items:center;justify-content:space-between;height:72px}
@@ -659,6 +676,30 @@ footer .logo{color:#fff}
   <div class="wrap" style="margin-top:18px;font-size:12.5px;line-height:1.6">GSheetPOS is an independent product and is not affiliated with or endorsed by Google or WhatsApp. Google Sheets, Google Drive and WhatsApp are trademarks of their owners.</div>
 </footer>
 
+<div class="lead-modal" id="leadModal" aria-hidden="true">
+  <div class="lead-modal-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle">
+    <button type="button" class="lead-modal-close" id="leadClose" aria-label="Close">×</button>
+    <h3 id="leadTitle">Quick enquiry</h3>
+    <p>Enter your name and WhatsApp number and we’ll contact you shortly.</p>
+    <form id="leadForm" novalidate>
+      <div class="field">
+        <label for="leadName">Your name</label>
+        <input id="leadName" name="name" type="text" placeholder="e.g. Ravi Kumar" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label for="leadPhone">WhatsApp number</label>
+        <input id="leadPhone" name="phone" type="tel" placeholder="10-digit mobile number" inputmode="tel" autocomplete="tel" required>
+      </div>
+      <div class="error" id="leadError"></div>
+      <div class="actions">
+        <button type="button" class="btn ghost secondary" id="leadLater">Later</button>
+        <button type="submit" class="btn primary" id="leadSubmit">Send</button>
+      </div>
+      <div class="success" id="leadSuccess">Thanks! We’ve saved your details and will contact you soon.</div>
+    </form>
+  </div>
+</div>
+
 <a class="fab" id="fab" href="#" aria-label="Chat on WhatsApp" target="_blank" rel="noopener">💬</a>
 
 <script>
@@ -713,6 +754,92 @@ var CONFIG = {
   if (waOk) {
     ['#waSide', '#fab'].forEach(function (id) { var a = $(id); a.href = waUrl(CONFIG.waText); a.target = '_blank'; a.rel = 'noopener'; a.style.display = id === '#fab' ? 'grid' : 'inline-flex'; });
   }
+
+  /* popup lead capture */
+  var leadModal = $('#leadModal');
+  var leadForm = $('#leadForm');
+  var leadName = $('#leadName');
+  var leadPhone = $('#leadPhone');
+  var leadError = $('#leadError');
+  var leadSuccess = $('#leadSuccess');
+  var leadDismissed = false;
+
+  function showLeadModal() {
+    if (leadDismissed || localStorage.getItem('gsheetposLeadPopupSeen') === '1') return;
+    leadModal.classList.add('show');
+    leadModal.setAttribute('aria-hidden', 'false');
+    setTimeout(function () { leadName.focus(); }, 120);
+  }
+
+  function hideLeadModal() {
+    leadDismissed = true;
+    localStorage.setItem('gsheetposLeadPopupSeen', '1');
+    leadModal.classList.remove('show');
+    leadModal.setAttribute('aria-hidden', 'true');
+  }
+
+  $('#leadClose').addEventListener('click', hideLeadModal);
+  $('#leadLater').addEventListener('click', hideLeadModal);
+  leadModal.addEventListener('click', function (e) {
+    if (e.target === leadModal) hideLeadModal();
+  });
+
+  leadForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    leadError.classList.remove('show');
+    leadSuccess.classList.remove('show');
+
+    var name = leadName.value.trim();
+    var phone = digits(leadPhone.value);
+
+    if (name.length < 2) {
+      leadError.textContent = 'Please enter your name.';
+      leadError.classList.add('show');
+      leadName.focus();
+      return;
+    }
+
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      leadError.textContent = 'Please enter a valid 10-digit WhatsApp number.';
+      leadError.classList.add('show');
+      leadPhone.focus();
+      return;
+    }
+
+    var submitBtn = $('#leadSubmit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    fetch('/api/enquiry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name,
+        phone: phone,
+        source: 'popup',
+        t: Date.now() - loadedAt,
+        website: ''
+      })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send';
+
+      if (data && data.ok) {
+        leadSuccess.classList.add('show');
+        setTimeout(function () { hideLeadModal(); }, 1400);
+      } else {
+        leadError.textContent = (data && data.error) || 'Something went wrong. Please try again.';
+        leadError.classList.add('show');
+      }
+    }).catch(function () {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send';
+      leadError.textContent = 'Could not save your details right now. Please try again.';
+      leadError.classList.add('show');
+    });
+  });
+
+  setTimeout(showLeadModal, 2500);
 
   /* form */
   var form = $('#enq'), loadedAt = Date.now();
