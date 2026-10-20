@@ -633,21 +633,10 @@ footer .logo{color:#fff}
           <h3>Onboarding enquiry</h3><p style="color:var(--muted);font-size:14px">Fields marked * are required.</p>
           <div class="fg">
             <div class="f"><label for="name">Your name <em>*</em></label><input id="name" name="name" autocomplete="name" placeholder="e.g. Ravi Kumar"><span class="msg">Please enter your name</span></div>
-            <div class="f"><label for="business">Shop / business name <em>*</em></label><input id="business" name="business" autocomplete="organization" placeholder="e.g. Sri Lakshmi Traders"><span class="msg">Please enter your shop name</span></div>
-            <div class="f"><label for="phone">Phone / WhatsApp number <em>*</em></label><input id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number"><span class="msg">Enter a valid 10-digit mobile number</span></div>
-            <div class="f"><label for="email">Email (optional)</label><input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com"><span class="msg">Enter a valid email address</span></div>
-            <div class="f"><label for="city">City <em>*</em></label><input id="city" name="city" autocomplete="address-level2" placeholder="e.g. Coimbatore"><span class="msg">Please enter your city</span></div>
-            <div class="f"><label for="type">Type of business <em>*</em></label>
-              <select id="type" name="type"><option value="">Select…</option><option>General / grocery store</option><option>Garments / textiles</option><option>Stationery / gifts</option><option>Mobile / electronics</option><option>Home / hardware</option><option>Wholesale</option><option>Online seller (Instagram / WhatsApp / website)</option><option>Other</option></select><span class="msg">Please choose your business type</span></div>
-            <div class="f"><label for="gstin">GSTIN (optional)</label><input id="gstin" name="gstin" placeholder="If you are GST registered" maxlength="15" style="text-transform:uppercase"></div>
-            <div class="f"><label for="products">How many products do you sell?</label><select id="products" name="products"><option value="">Select…</option><option>Under 50</option><option>50 – 200</option><option>200 – 500</option><option>500 – 1,000</option><option>More than 1,000</option></select></div>
-            <div class="f"><label for="bills">Bills per day (approx.)</label><select id="bills" name="bills"><option value="">Select…</option><option>Under 20</option><option>20 – 50</option><option>50 – 100</option><option>100 – 200</option><option>More than 200</option></select></div>
-            <div class="f"><label for="software">Software you use now</label><input id="software" name="software" placeholder="e.g. paper bills, Excel, other app"></div>
-            <div class="f full"><label>Do you have a barcode scanner?</label><div class="opts"><label><input type="radio" name="scanner" value="Yes"> Yes</label><label><input type="radio" name="scanner" value="No"> No</label><label><input type="radio" name="scanner" value="Not sure"> Not sure</label></div></div>
-            <div class="f full"><label>Do you need…</label><div class="opts"><label><input type="checkbox" name="needs" value="Barcode labels"> 🏷️ Barcode labels</label><label><input type="checkbox" name="needs" value="Online orders & shipping labels"> 🛵 Online orders &amp; shipping labels</label><label><input type="checkbox" name="needs" value="WhatsApp bills"> 💬 WhatsApp bills</label></div></div>
-            <div class="f"><label for="lang">Preferred language for the call</label><select id="lang" name="lang"><option>Tamil</option><option>English</option><option>Hindi</option><option>Telugu</option><option>Malayalam</option><option>Kannada</option></select></div>
-            <div class="f"><label for="ctime">Best time to call</label><select id="ctime" name="ctime"><option>Morning (9 – 12)</option><option>Afternoon (12 – 4)</option><option>Evening (4 – 8)</option><option>Any time</option></select></div>
-            <div class="f full"><label for="message">Anything else we should know?</label><textarea id="message" name="message" placeholder="Your questions, special needs, or what you want to do with the system"></textarea></div>
+            <div class="f"><label for="phone">WhatsApp number <em>*</em></label><input id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number"><span class="msg">Enter a valid 10-digit mobile number</span></div>
+            <div class="f"><label for="business">Shop / business name</label><input id="business" name="business" autocomplete="organization" placeholder="Optional"><span class="msg">Optional</span></div>
+            <div class="f"><label for="city">City</label><input id="city" name="city" autocomplete="address-level2" placeholder="Optional"><span class="msg">Optional</span></div>
+            <div class="f full"><label for="message">What do you want to do?</label><textarea id="message" name="message" placeholder="Tell us briefly what you want to set up or ask"></textarea></div>
           </div>
           <div class="hp" aria-hidden="true"><label>Leave this empty<input type="text" id="website" name="website" tabindex="-1" autocomplete="off"></label></div>
           <label class="consent"><input type="checkbox" id="consent"><span>I agree to be contacted on phone, WhatsApp or email about this enquiry. See the <a href="privacy.html" target="_blank" rel="noopener" style="color:var(--brand);font-weight:600">privacy notice</a>.</span></label>
@@ -824,6 +813,17 @@ var CONFIG = {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Send';
 
+      if (data && data.saved) {
+        leadSuccess.classList.add('show');
+        setTimeout(function () { hideLeadModal(); }, 1400);
+        return;
+      }
+
+      if (data && data.fallbackWhatsApp) {
+        window.location.href = data.fallbackWhatsApp;
+        return;
+      }
+
       if (data && data.ok) {
         leadSuccess.classList.add('show');
         setTimeout(function () { hideLeadModal(); }, 1400);
@@ -848,32 +848,45 @@ var CONFIG = {
   function validate() {
     var ok = true;
     ok = setErr('name', $('#name').value.trim().length < 2) && ok;
-    ok = setErr('business', $('#business').value.trim().length < 2) && ok;
     ok = setErr('phone', !/^[6-9]\d{9}$/.test(digits($('#phone').value))) && ok;
-    var em = $('#email').value.trim(); ok = setErr('email', em !== '' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) && ok;
-    ok = setErr('city', $('#city').value.trim().length < 2) && ok;
-    ok = setErr('type', !$('#type').value) && ok;
+    var em = $('#email') ? $('#email').value.trim() : '';
+    if ($('#email')) ok = setErr('email', em !== '' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) && ok;
     var c = $('#consent').checked; $('#consentErr').style.display = c ? 'none' : 'block'; ok = c && ok;
     return ok;
   }
-  ['name', 'business', 'phone', 'email', 'city', 'type'].forEach(function (id) { $('#' + id).addEventListener('input', function () { $('#' + id).closest('.f').classList.remove('err'); }); });
+  ['name', 'business', 'phone', 'email', 'city'].forEach(function (id) {
+    var el = $('#' + id);
+    if (el) el.addEventListener('input', function () { $('#' + id).closest('.f').classList.remove('err'); });
+  });
   $('#consent').addEventListener('change', function () { if (this.checked) $('#consentErr').style.display = 'none'; });
 
   function collect() {
-    function val(id) { return $('#' + id).value.trim(); }
-    var sc = $('input[name=scanner]:checked');
+    function val(id) { var el = $('#' + id); return el ? el.value.trim() : ''; }
     return {
-      name: val('name'), business: val('business'), phone: digits($('#phone').value), email: val('email'), city: val('city'), type: val('type'),
-      gstin: val('gstin').toUpperCase(), products: val('products'), bills: val('bills'), software: val('software'),
-      scanner: sc ? sc.value : '', needs: $$('input[name=needs]:checked').map(function (x) { return x.value; }).join(', '),
-      lang: val('lang'), ctime: val('ctime'), message: val('message'), website: val('website'), t: Date.now() - loadedAt
+      name: val('name'),
+      business: val('business'),
+      phone: digits($('#phone').value),
+      email: val('email'),
+      city: val('city'),
+      type: $('#type') ? $('#type').value : 'Quick enquiry',
+      gstin: val('gstin'),
+      products: val('products'),
+      bills: val('bills'),
+      software: val('software'),
+      scanner: $('input[name=scanner]:checked') ? $('input[name=scanner]:checked').value : '',
+      needs: $$('input[name=needs]:checked').map(function (x) { return x.value; }).join(', '),
+      lang: val('lang'),
+      ctime: val('ctime'),
+      message: val('message'),
+      website: val('website'),
+      t: Date.now() - loadedAt
     };
   }
   function showDone(d, saved) {
     form.style.display = 'none'; $('#done').classList.add('show');
     $('#doneTxt').textContent = saved ? 'We’ll contact you shortly on ' + d.phone + '. Want a faster reply? Message us on WhatsApp.' : 'We could not save your details automatically, so please send them to us on WhatsApp and we will reply there.';
     if (waOk) { var a = $('#waDone'); a.style.display = 'inline-flex'; a.target = '_blank'; a.rel = 'noopener';
-      a.href = waUrl('Hi, I filled the GSheetPOS enquiry.\nName: ' + d.name + '\nShop: ' + d.business + '\nCity: ' + d.city + '\nPhone: ' + d.phone + '\nType: ' + d.type); }
+      a.href = waUrl('Hi, I filled the GSheetPOS enquiry.\nName: ' + d.name + '\nShop: ' + (d.business || 'Not provided') + '\nCity: ' + (d.city || 'Not provided') + '\nPhone: ' + d.phone + '\nType: ' + (d.type || 'Quick enquiry')); }
     $('#formBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 form.addEventListener('submit', function (e) {
@@ -883,73 +896,63 @@ form.addEventListener('submit', function (e) {
     box.className = 'alert';
     box.textContent = '';
 
-    // Keep existing form validation
     if (!validate()) {
         var first = $('.f.err', form);
         if (first) {
-            first.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-            });
+            first.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         return;
     }
 
     var d = collect();
     var btn = $('#send');
-
-    // Disable button while preparing WhatsApp
     btn.disabled = true;
     btn.classList.add('busy');
-    $('#sendTxt').textContent = 'Opening WhatsApp…';
+    $('#sendTxt').textContent = 'Saving...';
 
-    try {
-        // Build enquiry message
-        var message =
-            '*New GSheetPOS Enquiry*\n\n' +
-            '*Name:* ' + (d.name || '') + '\n' +
-            '*Business:* ' + (d.business || '') + '\n' +
-            '*Phone:* ' + (d.phone || '') + '\n' +
-            '*Email:* ' + (d.email || 'Not provided') + '\n' +
-            '*City:* ' + (d.city || '') + '\n' +
-            '*Business Type:* ' + (d.type || '') + '\n' +
-            '*GSTIN:* ' + (d.gstin || 'Not provided') + '\n' +
-            '*Products:* ' + (d.products || 'Not provided') + '\n' +
-            '*Daily Bills:* ' + (d.bills || 'Not provided') + '\n' +
-            '*Current Software:* ' + (d.software || 'Not provided') + '\n' +
-            '*Scanner:* ' + (d.scanner || 'Not provided') + '\n' +
-            '*Requirements:* ' + (d.needs || 'Not provided') + '\n' +
-            '*Language:* ' + (d.lang || 'Not provided') + '\n' +
-            '*Preferred Contact Time:* ' + (d.ctime || 'Not provided') + '\n' +
-            '*Message:* ' + (d.message || 'Not provided');
+    fetch('/api/enquiry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: d.name,
+        business: d.business,
+        phone: d.phone,
+        email: d.email,
+        city: d.city,
+        type: d.type,
+        message: d.message,
+        website: d.website,
+        t: d.t
+      })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      $('#sendTxt').textContent = 'Send enquiry';
 
-        // IMPORTANT: Replace with your business WhatsApp number.
-        // Include country code; do not include + or spaces.
-        var businessWhatsApp = '919688772477';
+      if (data && data.ok && data.saved) {
+        showDone(d, true);
+        return;
+      }
 
-        var whatsappUrl =
-            'https://wa.me/' +
-            businessWhatsApp +
-            '?text=' +
-            encodeURIComponent(message);
+      if (data && data.fallbackWhatsApp) {
+        window.location.href = data.fallbackWhatsApp;
+        return;
+      }
 
-        // Open WhatsApp directly; no API or Google Sheets call.
-        window.location.href = whatsappUrl;
+      if (data && data.whatsappUrl) {
+        window.location.href = data.whatsappUrl;
+        return;
+      }
 
-        // Restore button if the customer returns to the page
-        btn.disabled = false;
-        btn.classList.remove('busy');
-        $('#sendTxt').textContent = 'Send enquiry';
-
-    } catch (err) {
-        btn.disabled = false;
-        btn.classList.remove('busy');
-        $('#sendTxt').textContent = 'Send enquiry';
-
-        box.className = 'alert bad';
-        box.textContent =
-            'Could not open WhatsApp. Please try again.';
-    }
+      box.className = 'alert bad';
+      box.textContent = (data && data.error) || 'Could not process your enquiry. Please try again.';
+    }).catch(function () {
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      $('#sendTxt').textContent = 'Send enquiry';
+      box.className = 'alert bad';
+      box.textContent = 'Could not save your details right now. Please try again.';
+    });
 });
 })();
 </script>

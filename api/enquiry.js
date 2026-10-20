@@ -34,9 +34,15 @@ const MAX = {
   needs: 200
 };
 
-const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || '';
-const ENQUIRY_TOKEN = process.env.ENQUIRY_TOKEN || '';
 const WHATSAPP_NUMBER = '919688772477';
+
+function getAppsScriptUrl() {
+  return process.env.APPS_SCRIPT_URL || '';
+}
+
+function getEnquiryToken() {
+  return process.env.ENQUIRY_TOKEN || '';
+}
 
 function clean(v, max) {
   return String(v == null ? '' : v)
@@ -54,12 +60,15 @@ function normalizePhone(value) {
 }
 
 async function saveToGoogleSheet(data) {
-  if (!APPS_SCRIPT_URL || !ENQUIRY_TOKEN) {
+  const appsScriptUrl = getAppsScriptUrl();
+  const enquiryToken = getEnquiryToken();
+
+  if (!appsScriptUrl || !enquiryToken) {
     return { ok: false, reason: 'not-configured' };
   }
 
   const payload = {
-    token: ENQUIRY_TOKEN,
+    token: enquiryToken,
     name: clean(data.name, 120),
     business: clean(data.business || 'Popup lead', 120),
     phone: normalizePhone(data.phone),
@@ -78,7 +87,7 @@ async function saveToGoogleSheet(data) {
     website: clean(data.website || '', 120)
   };
 
-  const response = await fetch(APPS_SCRIPT_URL, {
+  const response = await fetch(appsScriptUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -96,8 +105,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,
-      enquiry_method: 'Google Sheet + WhatsApp',
-      google_sheet_configured: !!(APPS_SCRIPT_URL && ENQUIRY_TOKEN),
+      enquiry_method: 'Google Sheet first, WhatsApp fallback',
+      google_sheet_configured: !!(getAppsScriptUrl() && getEnquiryToken()),
       whatsapp_configured: /^\d{10,15}$/.test(WHATSAPP_NUMBER) && WHATSAPP_NUMBER !== '919876543210'
     });
   }
@@ -114,94 +123,65 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, ignored: true });
     }
 
-    if (Number(body.t) < 2500 && body.source !== 'popup') {
-      return res.status(200).json({ ok: true, ignored: true });
-    }
-
     const d = {};
     FIELDS.forEach((key) => {
       d[key] = clean(body[key], MAX[key]);
     });
 
     d.name = clean(body.name, 120);
+    d.business = clean(body.business || '', 120);
     d.phone = normalizePhone(body.phone || d.phone);
+    d.city = clean(body.city || '', 120);
+    d.type = clean(body.type || 'Quick enquiry', 120);
 
-    if (body.source === 'popup') {
-      if (!d.name || !d.phone || !/^[6-9]\d{9}$/.test(d.phone)) {
-        return res.status(400).json({ ok: false, error: 'Please enter your valid name and WhatsApp number.' });
-      }
-
-      const sheetResult = await saveToGoogleSheet({
-        name: d.name,
-        phone: d.phone,
-        business: 'Popup lead',
-        city: 'Not provided',
-        type: 'Popup lead',
-        email: '',
-        gstin: '',
-        products: '',
-        bills: '',
-        software: '',
-        scanner: 'Not provided',
-        needs: '',
-        lang: 'Not provided',
-        ctime: 'Not provided',
-        message: 'Captured via website popup lead form.'
-      });
-
-      if (sheetResult.ok) {
-        return res.status(200).json({ ok: true, saved: true, message: 'Lead saved to Google Sheet.' });
-      }
-
-      return res.status(200).json({ ok: true, saved: false, message: 'Lead received locally. Configure Google Sheets to save it automatically.' });
-    }
-
-    d.phone = normalizePhone(d.phone);
-    if (d.name.length < 2 || d.business.length < 2 || d.city.length < 2 || !d.type) {
-      return res.status(400).json({ ok: false, error: 'Please fill all required fields.' });
-    }
-
-    if (!/^[6-9]\d{9}$/.test(d.phone)) {
-      return res.status(400).json({ ok: false, error: 'Please enter a valid 10-digit mobile number.' });
+    if (!d.name || !d.phone || !/^[6-9]\d{9}$/.test(d.phone)) {
+      return res.status(400).json({ ok: false, error: 'Please enter your name and valid WhatsApp number.' });
     }
 
     if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) {
       return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
     }
 
-    if (!/^\d{10,15}$/.test(WHATSAPP_NUMBER) || WHATSAPP_NUMBER === '919876543210') {
-      return res.status(500).json({ ok: false, error: 'Please configure the business WhatsApp number.' });
-    }
-
     const lines = [
-      '*New Software Enquiry*',
+      '*New GSheetPOS Enquiry*',
       '',
       '*Name:* ' + d.name,
-      '*Business Name:* ' + d.business,
-      '*Mobile:* ' + d.phone,
-      '*Email:* ' + (d.email || 'Not provided'),
-      '*City:* ' + d.city,
-      '*Business Type:* ' + d.type,
-      '*GSTIN:* ' + (d.gstin || 'Not provided'),
-      '*Products:* ' + (d.products || 'Not provided'),
-      '*Daily Bills:* ' + (d.bills || 'Not provided'),
-      '*Current Software:* ' + (d.software || 'Not provided'),
-      '*Scanner:* ' + (d.scanner || 'Not provided'),
-      '*Requirements:* ' + (d.needs || 'Not provided'),
-      '*Preferred Language:* ' + (d.lang || 'Not provided'),
-      '*Contact Time:* ' + (d.ctime || 'Not provided'),
+      '*Phone:* ' + d.phone,
+      '*Business:* ' + (d.business || 'Not provided'),
+      '*City:* ' + (d.city || 'Not provided'),
       '*Message:* ' + (d.message || 'Not provided')
     ];
 
     const whatsappUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(lines.join('\n'));
 
-    await saveToGoogleSheet(d).catch(() => {});
+    const sheetPayload = {
+      name: d.name,
+      phone: d.phone,
+      business: d.business || 'Quick enquiry',
+      city: d.city || 'Not provided',
+      type: d.type || 'Quick enquiry',
+      email: d.email || '',
+      gstin: d.gstin || '',
+      products: d.products || '',
+      bills: d.bills || '',
+      software: d.software || '',
+      scanner: d.scanner || 'Not provided',
+      needs: d.needs || '',
+      lang: d.lang || 'Not provided',
+      ctime: d.ctime || 'Not provided',
+      message: d.message || ''
+    };
+
+    const sheetResult = await saveToGoogleSheet(sheetPayload);
+    if (sheetResult.ok) {
+      return res.status(200).json({ ok: true, saved: true, method: 'sheet', message: 'Lead saved to Google Sheet.' });
+    }
 
     return res.status(200).json({
-      ok: true,
+      ok: false,
+      fallbackWhatsApp: whatsappUrl,
       method: 'whatsapp',
-      whatsappUrl,
-      message: 'WhatsApp enquiry link generated.'
+      message: 'Google Sheet save failed. Redirecting to WhatsApp.'
     });
   } catch (e) {
     console.error('Enquiry error:', e && e.message ? e.message : e);
